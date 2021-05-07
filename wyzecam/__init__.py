@@ -12,5 +12,11 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "unknown"
 
 from wyzecam.api import get_camera_list, get_user_info, login
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.api_models import (
+    WyzeAccount,
+    WyzeCamera,
+    WyzeCredential,
+    WyzeSettings,
+)
 from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession, WyzeIOTCSessionState
+from wyzecam.wyze_broker import WyzeBroker

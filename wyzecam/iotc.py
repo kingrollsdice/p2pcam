@@ -6,7 +6,7 @@ import time
 import warnings
 from ctypes import CDLL, c_int
 
-from wyzecam.api_models import WyzeAccount, WyzeCamera
+from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeSettings
 
 try:
     import av
@@ -128,7 +128,7 @@ class WyzeIOTC:
         self.deinitialize()
 
     def connect_and_auth(
-        self, account: WyzeAccount, camera: WyzeCamera
+        self, *, settings: WyzeSettings, camera: WyzeCamera, **kwargs
     ) -> "WyzeIOTCSession":
         """Initialize a new iotc session with the specified camera, and account information.
 
@@ -143,11 +143,16 @@ class WyzeIOTC:
 
         See [WyzeIOTCSession](../iotc_session/) for more info.
 
-        :param account: the account object returned from [wyzecam.api.get_user_info][]
+        :param settings: the settings object returned from [wyzecam.api.get_user_info][]
         :param camera: the camera object returned from [wyzecam.api.get_camera_list][]
         :returns: An object representing the Wyze IOTC Session, a [WyzeIOTCSession](../iotc_session/)
         """
-        return WyzeIOTCSession(self.tutk_platform_lib, account, camera)
+        return WyzeIOTCSession(
+            self.tutk_platform_lib,
+            account=settings.account,
+            camera=camera,
+            **kwargs,
+        )
 
 
 class WyzeIOTCSessionState(enum.IntEnum):
@@ -217,10 +222,12 @@ class WyzeIOTCSession:
     def __init__(
         self,
         tutk_platform_lib: CDLL,
+        *,
         account: WyzeAccount,
         camera: WyzeCamera,
         frame_size: int = tutk.FRAME_SIZE_1080P,
         bitrate: int = tutk.BITRATE_HD,
+        **kwargs,
     ) -> None:
         """Construct a wyze iotc session
 

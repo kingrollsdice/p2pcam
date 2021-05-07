@@ -1,6 +1,14 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
+from pydantic.types import SecretStr
+
+
+class WyzeLogin(BaseModel):
+    email: str
+    password: Optional[SecretStr] = None
+    hashed_password: Optional[str] = None
+    phone_id: Optional[str] = None
 
 
 class WyzeCredential(BaseModel):
@@ -71,3 +79,10 @@ class WyzeCamera(BaseModel):
     def set_camera_info(self, info: Dict[str, Any]) -> None:
         # Called internally as part of WyzeIOTC.connect_and_auth()
         self.camera_info = info
+
+
+class WyzeSettings(BaseModel):
+    login: Optional[WyzeLogin]
+    credential: Optional[WyzeCredential]
+    account: Optional[WyzeAccount]
+    cameras: Optional[List[WyzeCamera]]

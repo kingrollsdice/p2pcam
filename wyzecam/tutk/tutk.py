@@ -78,6 +78,13 @@ AV_ER_INCOMPLETE_FRAME = -20013
 An error sent during video streaming if the camera wasn't able to send a complete frame.
 """
 
+AV_ER_LOSED_THIS_FRAME = -20014
+"""
+/** The whole frame is lost during receiving */
+"""
+"""/** The specified IOTC session ID is not valid */"""
+IOTC_ER_INVALID_SID = -14
+
 project_root = pathlib.Path(__file__).parent
 
 
@@ -250,7 +257,9 @@ def av_recv_frame_data(
     if errno < 0:
         return errno, None, None, None
     else:
-        frame_data_actual: bytes = frame_data[: frame_data_actual_len.value]  # type: ignore
+        frame_data_actual: bytes = frame_data[
+            : frame_data_actual_len.value
+        ]  # type: ignore
         return (
             0,
             frame_data_actual,

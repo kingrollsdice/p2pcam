@@ -5,7 +5,7 @@ import uuid
 from hashlib import md5
 
 import requests
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.api_models import P2PCamera, WyzeAccount, WyzeCredential
 
 SV_VALUE = "e1fe392906d54888a9b99b88de4162d7"
 SC_VALUE = "9f275790cab94a72bd206c8876429f3c"
@@ -96,7 +96,7 @@ def get_homepage_object_list(auth_info: WyzeCredential) -> Dict[str, Any]:
     return data
 
 
-def get_camera_list(auth_info: WyzeCredential) -> List[WyzeCamera]:
+def get_camera_list(auth_info: WyzeCredential) -> List[P2PCamera]:
     data = get_homepage_object_list(auth_info)
     result = []
     for device in data["device_list"]:  # type: Dict[str, Any]
@@ -120,7 +120,7 @@ def get_camera_list(auth_info: WyzeCredential) -> List[WyzeCamera]:
             continue
 
         result.append(
-            WyzeCamera(
+            P2PCamera(
                 p2p_id=p2p_id,
                 enr=enr,
                 mac=mac,

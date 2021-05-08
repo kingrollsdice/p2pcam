@@ -10,9 +10,9 @@ def tutk_platform_lib():
 
 @pytest.fixture
 def iotc(tutk_platform_lib):
-    return wyzecam.iotc.WyzeIOTC(tutk_platform_lib)
+    return wyzecam.iotc.P2PPlatform(tutk_platform_lib)
 
 
-def test_get_version(iotc: wyzecam.iotc.WyzeIOTC) -> None:
+def test_get_version(iotc: wyzecam.iotc.P2PPlatform) -> None:
     with iotc:
         assert iotc.version == 0xDEADBEEF

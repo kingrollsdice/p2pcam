@@ -5,7 +5,7 @@ try:
 except ImportError:
     cv2 = None
 from wyzecam import get_camera_list, get_user_info, login
-from wyzecam.iotc import WyzeIOTC
+from wyzecam.iotc import P2PPlatform
 
 
 def main():
@@ -21,7 +21,7 @@ def main():
         0
     ]
 
-    with WyzeIOTC() as wyze_iotc:
+    with P2PPlatform() as wyze_iotc:
         with wyze_iotc.connect_and_auth(account, cam) as sess:
             session_info = sess.session_check()
             print(f"{sess.state}, session_info = {session_info}")

@@ -10,6 +10,11 @@ class WyzeLogin(BaseModel):
     hashed_password: Optional[str] = None
     phone_id: Optional[str] = None
 
+    class Config:
+        json_encoders = {
+            SecretStr: lambda v: (None),
+        }
+
 
 class WyzeCredential(BaseModel):
     """Authenticated credentials; see [wyzecam.api.login][].
@@ -54,7 +59,7 @@ class WyzeAccount(BaseModel):
     open_user_id: str
 
 
-class WyzeCamera(BaseModel):
+class P2PCamera(BaseModel):
     """Wyze camera device information; see [wyzecam.api.get_camera_list][].
 
     :var p2p_id: the p2p id of the camera, used for identifying the camera to tutk.
@@ -81,8 +86,8 @@ class WyzeCamera(BaseModel):
         self.camera_info = info
 
 
-class WyzeSettings(BaseModel):
+class P2PSettings(BaseModel):
     login: Optional[WyzeLogin]
     credential: Optional[WyzeCredential]
     account: Optional[WyzeAccount]
-    cameras: Optional[List[WyzeCamera]]
+    cameras: Optional[List[P2PCamera]]

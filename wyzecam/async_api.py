@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 import asyncio
 import time
@@ -10,12 +10,8 @@ import aiofiles
 from aiofiles.threadpool.text import AsyncTextIOWrapper
 from aiohttp import ClientSession
 from pydantic import BaseModel
-from wyzecam.api_models import (
-    WyzeAccount,
-    WyzeCamera,
-    WyzeCredential,
-    WyzeLogin,
-)
+from pydantic.types import SecretStr
+from wyzecam.api_models import P2PCamera, WyzeAccount, WyzeCredential, WyzeLogin
 
 SV_VALUE = "e1fe392906d54888a9b99b88de4162d7"
 SC_VALUE = "9f275790cab94a72bd206c8876429f3c"
@@ -60,7 +56,7 @@ async def async_login(login: WyzeLogin) -> WyzeCredential:
             raise ValueError(
                 "Must provide password or hashed password but not both"
             )
-    if login.password is not None:
+    else:
         if login.hashed_password is not None:
             raise ValueError(
                 "Must provide password or hashed password but not both"
@@ -119,7 +115,7 @@ async def async_get_homepage_object_list(
     return data
 
 
-async def async_get_camera_list(auth_info: WyzeCredential) -> List[WyzeCamera]:
+async def async_get_camera_list(auth_info: WyzeCredential) -> List[P2PCamera]:
     data = await async_get_homepage_object_list(auth_info)
     result = []
     for device in data["device_list"]:  # type: Dict[str, Any]
@@ -143,7 +139,7 @@ async def async_get_camera_list(auth_info: WyzeCredential) -> List[WyzeCamera]:
             continue
 
         result.append(
-            WyzeCamera(
+            P2PCamera(
                 p2p_id=p2p_id,
                 enr=enr,
                 mac=mac,
@@ -178,9 +174,9 @@ def get_headers(phone_id, user_agent="wyze_ios_2.19.24"):
     }
 
 
-def triplemd5(password):
+def triplemd5(password: SecretStr):
     """Runs hashlib.md5() algorithm 3 times"""
-    encoded = password
+    encoded = password.get_secret_value()
     for i in range(3):
         encoded = md5(encoded.encode("ascii")).hexdigest()  # nosec
     return encoded

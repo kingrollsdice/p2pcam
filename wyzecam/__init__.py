@@ -13,10 +13,12 @@ except PackageNotFoundError:  # pragma: no cover
 
 from wyzecam.api import get_camera_list, get_user_info, login
 from wyzecam.api_models import (
+    P2PCamera,
+    P2PSettings,
     WyzeAccount,
-    WyzeCamera,
     WyzeCredential,
-    WyzeSettings,
 )
-from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession, WyzeIOTCSessionState
+from wyzecam.iotc import P2PPlatform, P2PSession, WyzeIOTCSessionState
 from wyzecam.wyze_broker import WyzeBroker
+
+from .motion import MotionDetector

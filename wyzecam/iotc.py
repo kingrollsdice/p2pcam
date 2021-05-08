@@ -1,12 +1,15 @@
 from typing import Dict, Iterator, Optional, Tuple, Union
 
+import atexit
 import enum
+import os
 import pathlib
+import platform
 import time
 import warnings
-from ctypes import CDLL, c_int
+from ctypes import CDLL, LibraryLoader, c_int
 
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeSettings
+from wyzecam.api_models import P2PCamera, P2PSettings
 
 try:
     import av
@@ -32,8 +35,11 @@ from wyzecam.tutk.tutk_protocol import (
     respond_to_ioctrl_10001,
 )
 
+LIBRARY_FILES = ["libIOTCAPIs_ALL"]
+LIBRARY_FILE_EXT = [".so", ".dyall"]
 
-class WyzeIOTC:
+
+class P2PPlatform:
     """Wyze IOTC singleton, used to construct iotc_sessions
 
     This object should generally be used inside a context manager, i.e.:
@@ -71,7 +77,7 @@ class WyzeIOTC:
 
         """
         if tutk_platform_lib is None:
-            tutk_platform_lib = tutk.load_library()
+            tutk_platform_lib = P2PPlatform.find_library()
         if isinstance(tutk_platform_lib, str):
             path = pathlib.Path(tutk_platform_lib)
             tutk_platform_lib = tutk.load_library(str(path.absolute()))
@@ -80,6 +86,28 @@ class WyzeIOTC:
         self.initd = False
         self.udp_port = udp_port
         self.max_num_av_channels = max_num_av_channels
+
+    @staticmethod
+    def find_library() -> Optional[CDLL]:
+        libpath = os.path.dirname(__file__)
+        lib = P2PPlatform.load_library(libpath)
+        if lib is None:
+            machine = platform.machine()
+            machine == "x64" if machine == "x86_64" else machine
+            libpath = os.path.join(".", platform.system(), machine)
+            return P2PPlatform.load_library(libpath)
+        return lib
+
+    @staticmethod
+    def load_library(libpath: str) -> Optional[CDLL]:
+        for filename in [
+            name + ext for ext in LIBRARY_FILE_EXT for name in LIBRARY_FILES
+        ]:
+            filepath = os.path.join(libpath, filename)
+            if os.path.isfile(filepath):
+                return tutk.load_library(filepath)
+            continue
+        return None
 
     def initialize(self):
         """Initialize the underlying TUTK library
@@ -104,6 +132,7 @@ class WyzeIOTC:
         )
         if actual_num_chans < 0:
             raise tutk.TutkError(errno)
+        atexit.register(self.deinitialize)
 
         self.max_num_av_channels = actual_num_chans
 
@@ -114,45 +143,12 @@ class WyzeIOTC:
         """
         tutk.av_deinitialize(self.tutk_platform_lib)
         tutk.iotc_deinitialize(self.tutk_platform_lib)
+        atexit.unregister(self.deinitialize)
 
     @property
     def version(self):
         """Get the version of the underlying TUTK library"""
         return tutk.iotc_get_version(self.tutk_platform_lib)
-
-    def __enter__(self):
-        self.initialize()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.deinitialize()
-
-    def connect_and_auth(
-        self, *, settings: WyzeSettings, camera: WyzeCamera, **kwargs
-    ) -> "WyzeIOTCSession":
-        """Initialize a new iotc session with the specified camera, and account information.
-
-        The result of this method should be used as a context manager, i.e. using the 'with'
-        keyword.  This allows us to automatically clean up after we're done with the session:
-
-        ```python
-        with WyzeIOTC() as iotc:
-            with iotc.connect_and_auth(account, camera) as session:
-                ...  # send configuration commands, or stream video from the session.
-        ```
-
-        See [WyzeIOTCSession](../iotc_session/) for more info.
-
-        :param settings: the settings object returned from [wyzecam.api.get_user_info][]
-        :param camera: the camera object returned from [wyzecam.api.get_camera_list][]
-        :returns: An object representing the Wyze IOTC Session, a [WyzeIOTCSession](../iotc_session/)
-        """
-        return WyzeIOTCSession(
-            self.tutk_platform_lib,
-            account=settings.account,
-            camera=camera,
-            **kwargs,
-        )
 
 
 class WyzeIOTCSessionState(enum.IntEnum):
@@ -180,7 +176,30 @@ class WyzeIOTCSessionState(enum.IntEnum):
     """Authentication failed, and likely no longer connected"""
 
 
-class WyzeIOTCSession:
+class P2PSession:
+    _platform: P2PPlatform = None
+
+    @classmethod
+    def load_Platform(
+        cls,
+        tutk_platform_lib: Optional[Union[str, CDLL]] = None,
+        udp_port: int = 0,
+        max_num_av_channels: int = 2,
+    ):
+        if cls._platform is not None:
+            return
+        cls._platform = P2PPlatform(
+            tutk_platform_lib, udp_port, max_num_av_channels
+        )
+        cls._platform.initialize()
+
+    @classmethod
+    def unload_Platform(cls):
+        if cls._platform is None:
+            return
+        cls._platform.deinitialize()
+        cls._platform = None
+
     """An IOTC session object, used for communicating with Wyze cameras
 
     This is constructed from a WyzeIOTC object:
@@ -221,13 +240,10 @@ class WyzeIOTCSession:
 
     def __init__(
         self,
-        tutk_platform_lib: CDLL,
-        *,
-        account: WyzeAccount,
-        camera: WyzeCamera,
+        settings: P2PSettings,
+        camera: P2PCamera,
         frame_size: int = tutk.FRAME_SIZE_1080P,
         bitrate: int = tutk.BITRATE_HD,
-        **kwargs,
     ) -> None:
         """Construct a wyze iotc session
 
@@ -242,9 +258,10 @@ class WyzeIOTCSession:
         :param bitrate: Configures the bitrate of the video stream returned by the camera.
                         See [wyzecam.tutk.tutk.BITRATE_HD][].
         """
-        self.tutk_platform_lib: CDLL = tutk_platform_lib
-        self.account: WyzeAccount = account
-        self.camera: WyzeCamera = camera
+        P2PSession.load_Platform()
+        self.tutk_platform_lib: CDLL = P2PSession._platform.tutk_platform_lib
+        self.settings = settings
+        self.camera: P2PCamera = camera
         self.session_id: Optional[c_int] = None
         self.av_chan_id: Optional[c_int] = None
         self.state: WyzeIOTCSessionState = WyzeIOTCSessionState.DISCONNECTED
@@ -285,8 +302,8 @@ class WyzeIOTCSession:
                 self.camera.enr,
                 self.camera.product_model,
                 self.camera.mac,
-                self.account.phone_id,
-                self.account.open_user_id,
+                self.settings.account.phone_id,
+                self.settings.account.open_user_id,
             )
             auth_response = mux.send_ioctl(challenge_response).result()
             assert (
@@ -302,6 +319,10 @@ class WyzeIOTCSession:
             mux.waitfor(resolving)
 
         return self
+
+    def connect_and_auth(self):
+        self._connect()
+        self._auth()
 
     def iotctrl_mux(self) -> TutkIOCtrlMux:
         """Constructs a new TutkIOCtrlMux for this session
@@ -382,6 +403,9 @@ class WyzeIOTCSession:
                     continue
                 elif errno == tutk.AV_ER_INCOMPLETE_FRAME:
                     warnings.warn("Received incomplete frame")
+                    continue
+                elif errno == tutk.AV_ER_LOSED_THIS_FRAME:
+                    warnings.warn("Lost complete frame")
                     continue
                 else:
                     raise tutk.TutkError(errno)
@@ -604,8 +628,8 @@ class WyzeIOTCSession:
         self,
         timeout_secs=10,
         channel_id=0,
-        username="admin",
-        password="888888",
+        username=b"admin",
+        password=b"888888",
         max_buf_size=5 * 1024 * 1024,
     ):
         self.state = WyzeIOTCSessionState.IOTC_CONNECTING
@@ -618,8 +642,8 @@ class WyzeIOTCSession:
         av_chan_id, pn_serv_type = tutk.av_client_start(
             self.tutk_platform_lib,
             self.session_id,
-            username.encode("ascii"),
-            password.encode("ascii"),
+            username,
+            password,
             timeout_secs,
             channel_id,
         )

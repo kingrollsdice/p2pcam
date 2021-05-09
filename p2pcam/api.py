@@ -5,7 +5,8 @@ import uuid
 from hashlib import md5
 
 import requests
-from wyzecam.api_models import P2PCamera, WyzeAccount, WyzeCredential
+
+from .models import P2PCamera, ServiceAccount, ServiceCredential
 
 SV_VALUE = "e1fe392906d54888a9b99b88de4162d7"
 SC_VALUE = "9f275790cab94a72bd206c8876429f3c"
@@ -17,7 +18,7 @@ WYZE_APP_VERSION_NUM = "2.19.24"
 
 def login(
     email: str, password: str, phone_id: Optional[str] = None
-) -> WyzeCredential:
+) -> ServiceCredential:
     """Authenticate with Wyze
 
     This method calls out to the `/user/login` endpoint of
@@ -46,10 +47,10 @@ def login(
     )
     resp.raise_for_status()
 
-    return WyzeCredential.parse_obj(dict(resp.json(), phone_id=phone_id))
+    return ServiceCredential.parse_obj(dict(resp.json(), phone_id=phone_id))
 
 
-def get_user_info(auth_info: WyzeCredential) -> WyzeAccount:
+def get_user_info(auth_info: ServiceCredential) -> ServiceAccount:
     """Gets Wyze Account Information
 
     This method calls out to the `/app/user/get_user_info`
@@ -73,12 +74,12 @@ def get_user_info(auth_info: WyzeCredential) -> WyzeAccount:
     resp_json = resp.json()
     assert resp_json["code"] == "1", "Call failed"
 
-    return WyzeAccount.parse_obj(
+    return ServiceAccount.parse_obj(
         dict(resp_json["data"], phone_id=auth_info.phone_id)
     )
 
 
-def get_homepage_object_list(auth_info: WyzeCredential) -> Dict[str, Any]:
+def get_homepage_object_list(auth_info: ServiceCredential) -> Dict[str, Any]:
     """Gets all homepage objects"""
     payload = _get_payload(auth_info.access_token, auth_info.phone_id)
     ui_headers = get_headers(auth_info.phone_id, SCALE_USER_AGENT)
@@ -96,7 +97,7 @@ def get_homepage_object_list(auth_info: WyzeCredential) -> Dict[str, Any]:
     return data
 
 
-def get_camera_list(auth_info: WyzeCredential) -> List[P2PCamera]:
+def get_camera_list(auth_info: ServiceCredential) -> List[P2PCamera]:
     data = get_homepage_object_list(auth_info)
     result = []
     for device in data["device_list"]:  # type: Dict[str, Any]

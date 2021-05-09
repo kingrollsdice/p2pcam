@@ -2,14 +2,17 @@ from typing import Dict, Iterator, Optional, Tuple, Union
 
 import atexit
 import enum
+import logging
 import os
 import pathlib
 import platform
 import time
 import warnings
-from ctypes import CDLL, LibraryLoader, c_int
+from ctypes import CDLL, c_int
 
-from wyzecam.api_models import P2PCamera, P2PSettings
+from .models import P2PCamera, P2PSettings
+
+_Logger = logging.getLogger(__name__)
 
 try:
     import av
@@ -27,9 +30,10 @@ try:
 except ImportError:
     np = None  # type: ignore
 
-from wyzecam.tutk import tutk
-from wyzecam.tutk.tutk_ioctl_mux import TutkIOCtrlMux
-from wyzecam.tutk.tutk_protocol import (
+
+from .tutk import tutk
+from .tutk.tutk_ioctl_mux import TutkIOCtrlMux
+from .tutk.tutk_protocol import (
     K10000ConnectRequest,
     K10056SetResolvingBit,
     respond_to_ioctrl_10001,
@@ -241,7 +245,7 @@ class P2PSession:
     def __init__(
         self,
         settings: P2PSettings,
-        camera: P2PCamera,
+        camera: Union[int, str, P2PCamera],
         frame_size: int = tutk.FRAME_SIZE_1080P,
         bitrate: int = tutk.BITRATE_HD,
     ) -> None:
@@ -261,6 +265,12 @@ class P2PSession:
         P2PSession.load_Platform()
         self.tutk_platform_lib: CDLL = P2PSession._platform.tutk_platform_lib
         self.settings = settings
+        if isinstance(camera, int):  # index
+            camera = settings.cameras[camera]
+        elif isinstance(camera, str):  # name
+            cams = [c for c in settings.cameras if camera in c.nickname]
+            camera = cams[0]
+
         self.camera: P2PCamera = camera
         self.session_id: Optional[c_int] = None
         self.av_chan_id: Optional[c_int] = None

@@ -1,10 +1,13 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type, TypedDict, Union
 
+from os import PathLike
+
+import aiofiles
 from pydantic import BaseModel
 from pydantic.types import SecretStr
 
 
-class WyzeLogin(BaseModel):
+class ServiceLogin(BaseModel):
     email: str
     password: Optional[SecretStr] = None
     hashed_password: Optional[str] = None
@@ -16,7 +19,7 @@ class WyzeLogin(BaseModel):
         }
 
 
-class WyzeCredential(BaseModel):
+class ServiceCredential(BaseModel):
     """Authenticated credentials; see [wyzecam.api.login][].
 
     :var access_token: Access token used to authenticate other API calls
@@ -38,7 +41,7 @@ class WyzeCredential(BaseModel):
     phone_id: str
 
 
-class WyzeAccount(BaseModel):
+class ServiceAccount(BaseModel):
     """User profile information; see [wyzecam.api.get_user_info][].
 
     :var phone_id: The phone id passed to [login()][wyzecam.api.login]
@@ -86,8 +89,39 @@ class P2PCamera(BaseModel):
         self.camera_info = info
 
 
+class LoginInfo(TypedDict):
+    email: str
+    password: str
+
+
 class P2PSettings(BaseModel):
-    login: Optional[WyzeLogin]
-    credential: Optional[WyzeCredential]
-    account: Optional[WyzeAccount]
+    login: Optional[ServiceLogin]
+    credential: Optional[ServiceCredential]
+    account: Optional[ServiceAccount]
     cameras: Optional[List[P2PCamera]]
+
+    @classmethod
+    async def parse(
+        cls,
+        *,
+        data: Optional[Union[bytes, str, "P2PSettings", Any]] = None,
+        file: Optional[Union[PathLike, str]] = None,
+    ):
+        settings = None
+        if file is not None:
+            if data is not None:
+                raise ValueError(
+                    "Either data or file should be present but not both."
+                )
+        async with aiofiles.open(file, "rb") as f:
+            data = await f.read()
+        if data is not None:
+            if isinstance(data, P2PSettings):
+                settings = data
+            elif isinstance(data, (str, bytes)):
+                settings = cls.parse_raw(data)
+            else:
+                settings = cls.parse_obj(data)
+        else:
+            raise ValueError("Either data or file should be present.")
+        return settings

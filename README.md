@@ -2,19 +2,19 @@
 
 <div align="center">
 
-[![Build status](https://github.com/kroo/wyzecam/workflows/build/badge.svg?branch=master&event=push)](https://github.com/kroo/wyzecam/actions?query=workflow%3Abuild)
+[![Build status](workflows/build/badge.svg?branch=master&event=push)](actions?query=workflow%3Abuild)
 [![Python Version](https://img.shields.io/pypi/pyversions/wyzecam.svg)](https://pypi.org/project/wyzecam/)
-[![Dependencies Status](https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen.svg)](https://github.com/kroo/wyzecam/pulls?utf8=%E2%9C%93&q=is%3Apr%20author%3Aapp%2Fdependabot)
+[![Dependencies Status](https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen.svg)](pulls?utf8=%E2%9C%93&q=is%3Apr%20author%3Aapp%2Fdependabot)
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Security: bandit](https://img.shields.io/badge/security-bandit-green.svg)](https://github.com/PyCQA/bandit)
 [![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/kroo/wyzecam/blob/master/.pre-commit-config.yaml)
 [![Semantic Versions](https://img.shields.io/badge/%F0%9F%9A%80-semantic%20versions-informational.svg)](https://github.com/kroo/wyzecam/releases)
-[![License](https://img.shields.io/github/license/kroo/wyzecam)](https://github.com/kroo/wyzecam/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/kroo/wyzecam)](blob/master/LICENSE)
 
 </div>
 
-Wyzecam is a library for streaming audio and video from your wyze cameras using the wyze native firmware.
+p2pcam is a library for streaming audio and video from your wyze cameras using the wyze native firmware. It is derived from https://github.com/kroo/wyzecam/
 
 That means no need to flash rtsp-specific firmware, and full support for the v3 hardware!
 
@@ -23,20 +23,58 @@ That means no need to flash rtsp-specific firmware, and full support for the v3 
 Streaming video in 11 lines of code!
 
 ```python
-import os
-
+import asyncio
+import logging
+from os import PathLike
+from typing import Any, Optional, Union
+import aiofiles
 import cv2
-import wyzecam
+from p2pcam import MotionDetector, P2PSession, P2PSettings, ServiceBroker
 
-auth_info = wyzecam.login(os.environ["WYZE_EMAIL"], os.environ["WYZE_PASSWORD"])
-account = wyzecam.get_user_info(auth_info)
-camera = wyzecam.get_camera_list(auth_info)[0]
+_Logger = logging.getLogger(__name__)
 
-with wyzecam.WyzeIOTC() as wyze_iotc:
-  with wyze_iotc.connect_and_auth(account, camera) as sess:
-    for (frame, frame_info) in sess.recv_video_frame_ndarray():
-      cv2.imshow("Video Feed", frame)
-      cv2.waitKey(1)
+
+async def run_app(*,
+                  data: Any = None,
+                  file: Optional[Union[PathLike, str]] = None):
+
+    settings = await P2PSettings.parse(data=data, file=file)
+
+    broker = ServiceBroker(settings=settings)
+    await broker.async_prepare()
+
+    async with aiofiles.open(file, 'wb') as file:
+        raw_data = settings.json().encode('utf-8')
+        await file.write(raw_data)
+
+    with P2PSession(settings=settings,
+                    camera=1,
+                    bitrate=P2PSession.BITRATE_360P) as sess:
+        motion_detector = MotionDetector()
+        for (frame, frame_info) in sess.recv_video_frame_ndarray():
+            frame, thframe = motion_detector.detect(frame=frame)
+            if frame is None:
+                continue
+            cv2.imshow("Video Feed", frame)
+            cv2.imshow("Motion Feed", thframe)
+            # Press 'esc' for quit
+            if cv2.waitKey(1) == 27:
+                break
+
+    # Destroy all windows
+    cv2.destroyAllWindows()
+
+
+def main():
+    file = './settings.json'
+    email = "example@example.com"
+    password = "my super secret"
+    asyncio.run(run_app(file=file))
+
+
+if __name__ == "__main__":
+    main()
+
 ```
 
 ## Features
@@ -54,30 +92,20 @@ with wyzecam.WyzeIOTC() as wyze_iotc:
 pip install -U wyzecam
 ```
 
-You will then need a copy of the shared library `libIOTCAPIs_ALL`. You will need
-to [download this SDK](https://github.com/nblavoie/wyzecam-api/tree/master/wyzecam-sdk), unzip it, then convert the
-appropriate copy of the library to a shared library, and copy the resultant `.so` or `.dylib` file to somewhere
-convenient.
-
-### On Mac:
-
-```shell
-unzip TUTK_IOTC_Platform_14W42P1.zip
-cd Lib/MAC/
-g++ -fpic -shared -Wl,-all_load libIOTCAPIs_ALL.a -o libIOTCAPIs_ALL.dylib
-cp libIOTCAPIs_ALL.dylib /usr/local/lib/
-```
-
-### On Linux:
+To install shared library use
 
 ```bash
-unzip TUTK_IOTC_Platform_14W42P1.zip
-cd Lib/Linux/x64/
-g++ -fpic -shared -Wl,--whole-archive libAVAPIs.a libIOTCAPIs.a -Wl,--no-whole-archive -o libIOTCAPIs_ALL.so
-cp libIOTCAPIs_ALL.so /usr/local/lib/
+p2pcam_install_libs "https://github.com/nblavoie/wyzecam-api/blob/master/wyzecam-sdk/TUTK_IOTC_Platform_14W42P1.zip"
 ```
+This will download, unzip and copy the required files.
 
-Note: you will need to pick the appropriate architecture.
+You will then need a copy of the shared library `libAVAPIs.so` and `libIOTCAPIs.so`. You can use [this SDK](https://github.com/nblavoie/wyzecam-api/tree/master/wyzecam-sdk) 
+or another version that contains the files. 
+
+In case you have shared library files, you can add directly by using following
+```bash
+p2pcam_install_libs /path/to/file/libAVAPIs.so /path/to/file/libIOTCAPIs.so
+```
 
 ## 🛡 License
 

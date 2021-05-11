@@ -8,7 +8,7 @@ import pathlib
 import platform
 import time
 import warnings
-from ctypes import CDLL, c_int
+from ctypes import CDLL, RTLD_GLOBAL, c_int
 
 from .models import P2PCamera, P2PSettings
 
@@ -30,7 +30,6 @@ try:
 except ImportError:
     np = None  # type: ignore
 
-
 from .tutk import tutk
 from .tutk.tutk_ioctl_mux import TutkIOCtrlMux
 from .tutk.tutk_protocol import (
@@ -41,9 +40,40 @@ from .tutk.tutk_protocol import (
 
 LIBRARY_FILES = ["libIOTCAPIs_ALL"]
 LIBRARY_FILE_EXT = [".so", ".dyall"]
+AV_LIBRARY_FILE = "libAVAPIs.so"
+IOTC_LIBRARY_FILE = "libIOTCAPIs.so"
 
 
 class P2PPlatform:
+
+    _instance: Optional["P2PPlatform"] = None
+
+    @classmethod
+    def instance(cls):
+        return cls._instance
+
+    @classmethod
+    def load_Platform(
+        cls,
+        tutk_platform_lib: Optional[Union[str, CDLL]] = None,
+        udp_port: int = 0,
+        max_num_av_channels: int = 2,
+    ) -> "P2PPlatform":
+        if cls._instance is not None:
+            return cls._instance
+        cls._instance = P2PPlatform(
+            tutk_platform_lib, udp_port, max_num_av_channels
+        )
+        cls._instance._initialize()
+        return cls._instance
+
+    @classmethod
+    def unload_Platform(cls):
+        if cls._instance is None:
+            return
+        cls._instance._deinitialize()
+        cls._instance = None
+
     """Wyze IOTC singleton, used to construct iotc_sessions
 
     This object should generally be used inside a context manager, i.e.:
@@ -81,39 +111,35 @@ class P2PPlatform:
 
         """
         if tutk_platform_lib is None:
-            tutk_platform_lib = P2PPlatform.find_library()
-        if isinstance(tutk_platform_lib, str):
+            iotc_lib, av_lib = P2PPlatform._load_library()
+            self.iotc_lib: CDLL = iotc_lib
+            self.av_lib: CDLL = av_lib
+        elif isinstance(tutk_platform_lib, str):
             path = pathlib.Path(tutk_platform_lib)
             tutk_platform_lib = tutk.load_library(str(path.absolute()))
+            self.iotc_lib = tutk_platform_lib
+            self.av_lib = tutk_platform_lib
+        elif isinstance(tutk_platform_lib, CDLL):
+            self.iotc_lib = tutk_platform_lib
+            self.av_lib = tutk_platform_lib
 
-        self.tutk_platform_lib: CDLL = tutk_platform_lib
         self.initd = False
         self.udp_port = udp_port
         self.max_num_av_channels = max_num_av_channels
 
     @staticmethod
-    def find_library() -> Optional[CDLL]:
-        libpath = os.path.dirname(__file__)
-        lib = P2PPlatform.load_library(libpath)
-        if lib is None:
-            machine = platform.machine()
-            machine == "x64" if machine == "x86_64" else machine
-            libpath = os.path.join(".", platform.system(), machine)
-            return P2PPlatform.load_library(libpath)
-        return lib
+    def _load_library() -> Tuple[CDLL, CDLL]:
+        libpath = pathlib.Path(__file__).parent.joinpath("lib")
 
-    @staticmethod
-    def load_library(libpath: str) -> Optional[CDLL]:
-        for filename in [
-            name + ext for ext in LIBRARY_FILE_EXT for name in LIBRARY_FILES
-        ]:
-            filepath = os.path.join(libpath, filename)
-            if os.path.isfile(filepath):
-                return tutk.load_library(filepath)
-            continue
-        return None
+        iotcLibPath = str(libpath.joinpath(IOTC_LIBRARY_FILE))
+        iotcLib = CDLL(name=iotcLibPath, mode=RTLD_GLOBAL)
 
-    def initialize(self):
+        avLibPath = str(libpath.joinpath(AV_LIBRARY_FILE))
+        avLib = CDLL(name=avLibPath, mode=RTLD_GLOBAL)
+
+        return iotcLib, avLib
+
+    def _initialize(self):
         """Initialize the underlying TUTK library
 
         This is called automatically by the context manager,
@@ -125,34 +151,32 @@ class P2PPlatform:
             return
         self.initd = True
 
-        errno = tutk.iotc_initialize(
-            self.tutk_platform_lib, udp_port=self.udp_port or 0
-        )
+        errno = tutk.iotc_initialize(self.iotc_lib, udp_port=self.udp_port or 0)
         if errno < 0:
             raise tutk.TutkError(errno)
 
         actual_num_chans = tutk.av_initialize(
-            self.tutk_platform_lib, max_num_channels=self.max_num_av_channels
+            self.av_lib, max_num_channels=self.max_num_av_channels
         )
         if actual_num_chans < 0:
             raise tutk.TutkError(errno)
-        atexit.register(self.deinitialize)
+        atexit.register(self._deinitialize)
 
         self.max_num_av_channels = actual_num_chans
 
-    def deinitialize(self):
+    def _deinitialize(self):
         """Deinitialize the underlying TUTK library
 
         This is called automatically by the context manager
         """
-        tutk.av_deinitialize(self.tutk_platform_lib)
-        tutk.iotc_deinitialize(self.tutk_platform_lib)
-        atexit.unregister(self.deinitialize)
+        tutk.av_deinitialize(self.av_lib)
+        tutk.iotc_deinitialize(self.iotc_lib)
+        atexit.unregister(self._deinitialize)
 
     @property
     def version(self):
         """Get the version of the underlying TUTK library"""
-        return tutk.iotc_get_version(self.tutk_platform_lib)
+        return tutk.iotc_get_version(self.iotc_lib)
 
 
 class WyzeIOTCSessionState(enum.IntEnum):
@@ -181,7 +205,48 @@ class WyzeIOTCSessionState(enum.IntEnum):
 
 
 class P2PSession:
-    _platform: P2PPlatform = None
+    BITRATE_360P = 0x1E
+    """
+    The bitrate used by the "360P" setting in the app.  Approx 30 KB/s.
+    """
+
+    BITRATE_SD = 0x3C
+    """
+    The bitrate used by the "SD" setting in the app.  Approx 60 KB/s.
+    """
+    BITRATE_HD = 0x78
+    """
+    The bitrate used by the "HD" setting in the app.  Approx 120 KB/s.
+    """
+
+    BITRATE_SUPER_HD = 0x96
+    """
+    A bitrate higher than the "HD" setting in the app.  Approx 150 KB/s.
+    """
+
+    BITRATE_SUPER_SUPER_HD = 0xF0
+    """
+    A bitrate higher than the "HD" setting in the app.  Approx 240 KB/s.
+    """
+
+    FRAME_SIZE_1080P = 0
+    """
+    Represents the size of the video stream sent back from the server; 1080P
+    or 1920x1080 pixels.
+    """
+
+    FRAME_SIZE_360P = 1
+    """
+    Represents the size of the video stream sent back from the server; 360P
+    or 640x360 pixels.
+    """
+
+    @classmethod
+    def get_platform(cls):
+        platform = P2PPlatform._instance
+        if platform is None:
+            raise ValueError("call load_platform() before accessing.")
+        return platform
 
     @classmethod
     def load_Platform(
@@ -189,20 +254,14 @@ class P2PSession:
         tutk_platform_lib: Optional[Union[str, CDLL]] = None,
         udp_port: int = 0,
         max_num_av_channels: int = 2,
-    ):
-        if cls._platform is not None:
-            return
-        cls._platform = P2PPlatform(
+    ) -> None:
+        P2PPlatform.load_Platform(
             tutk_platform_lib, udp_port, max_num_av_channels
         )
-        cls._platform.initialize()
 
     @classmethod
     def unload_Platform(cls):
-        if cls._platform is None:
-            return
-        cls._platform.deinitialize()
-        cls._platform = None
+        P2PPlatform.unload_Platform()
 
     """An IOTC session object, used for communicating with Wyze cameras
 
@@ -263,12 +322,15 @@ class P2PSession:
                         See [wyzecam.tutk.tutk.BITRATE_HD][].
         """
         P2PSession.load_Platform()
-        self.tutk_platform_lib: CDLL = P2PSession._platform.tutk_platform_lib
         self.settings = settings
         if isinstance(camera, int):  # index
             camera = settings.cameras[camera]
         elif isinstance(camera, str):  # name
-            cams = [c for c in settings.cameras if camera in c.nickname]
+            cams = [
+                c
+                for c in settings.cameras
+                if c.nickname and camera in c.nickname
+            ]
             camera = cams[0]
 
         self.camera: P2PCamera = camera
@@ -278,6 +340,14 @@ class P2PSession:
 
         self.preferred_frame_size: int = frame_size
         self.preferred_bitrate: int = bitrate
+
+    @property
+    def av_lib(self):
+        return P2PSession.get_platform().av_lib
+
+    @property
+    def iotc_lib(self):
+        return P2PSession.get_platform().iotc_lib
 
     def session_check(self) -> tutk.SInfoStruct:
         """Used by a device or a client to check the IOTC session info.
@@ -292,7 +362,7 @@ class P2PSession:
         ), "Please call _connect() before session_check()"
 
         errcode, sess_info = tutk.iotc_session_check(
-            self.tutk_platform_lib, self.session_id
+            self.iotc_lib, self.session_id
         )
         if errcode < 0:
             raise tutk.TutkError(errcode)
@@ -353,7 +423,7 @@ class P2PSession:
 
         """
         assert self.av_chan_id is not None, "Please call _connect() first!"
-        return TutkIOCtrlMux(self.tutk_platform_lib, self.av_chan_id)
+        return TutkIOCtrlMux(self.av_lib, self.av_chan_id)
 
     def __enter__(self):
         self._connect()
@@ -405,7 +475,7 @@ class P2PSession:
 
         while True:
             errno, frame_data, frame_info, frame_idx = tutk.av_recv_frame_data(
-                self.tutk_platform_lib, self.av_chan_id
+                self.av_lib, self.av_chan_id
             )
             if errno < 0:
                 if errno == tutk.AV_ER_DATA_NOREADY:
@@ -644,13 +714,13 @@ class P2PSession:
     ):
         self.state = WyzeIOTCSessionState.IOTC_CONNECTING
         self.session_id = tutk.iotc_connect_by_uid(
-            self.tutk_platform_lib, self.camera.p2p_id
+            self.iotc_lib, self.camera.p2p_id
         )
         self.session_check()
 
         self.state = WyzeIOTCSessionState.AV_CONNECTING
         av_chan_id, pn_serv_type = tutk.av_client_start(
-            self.tutk_platform_lib,
+            self.av_lib,
             self.session_id,
             username,
             password,
@@ -670,13 +740,13 @@ class P2PSession:
             f"pn_serv_type={pn_serv_type.value}"
         )
 
-        tutk.av_client_set_max_buf_size(self.tutk_platform_lib, max_buf_size)
+        tutk.av_client_set_max_buf_size(self.av_lib, max_buf_size)
 
     def _disconnect(self):
         if self.av_chan_id:
-            tutk.av_client_stop(self.tutk_platform_lib, self.av_chan_id)
+            tutk.av_client_stop(self.av_lib, self.av_chan_id)
         self.av_chan_id = None
         if self.session_id:
-            tutk.iotc_session_close(self.tutk_platform_lib, self.session_id)
+            tutk.iotc_session_close(self.iotc_lib, self.session_id)
         self.session_id = None
         self.state = WyzeIOTCSessionState.DISCONNECTED

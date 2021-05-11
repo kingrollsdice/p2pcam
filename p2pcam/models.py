@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Type, TypedDict, Union
 
 from os import PathLike
+from os import path as pathlib
 
 import aiofiles
 from pydantic import BaseModel
@@ -95,26 +96,26 @@ class LoginInfo(TypedDict):
 
 
 class P2PSettings(BaseModel):
-    login: Optional[ServiceLogin]
-    credential: Optional[ServiceCredential]
-    account: Optional[ServiceAccount]
-    cameras: Optional[List[P2PCamera]]
+    login: Optional[ServiceLogin] = None
+    credential: ServiceCredential
+    account: ServiceAccount
+    cameras: List[P2PCamera]
 
     @classmethod
     async def parse(
         cls,
         *,
         data: Optional[Union[bytes, str, "P2PSettings", Any]] = None,
-        file: Optional[Union[PathLike, str]] = None,
-    ):
+        file: Optional[str] = None,
+    ) -> "P2PSettings":
         settings = None
-        if file is not None:
+        if file is not None and pathlib.isfile(file):
             if data is not None:
                 raise ValueError(
                     "Either data or file should be present but not both."
                 )
-        async with aiofiles.open(file, "rb") as f:
-            data = await f.read()
+            async with aiofiles.open(file, "rb") as f:
+                data = await f.read()
         if data is not None:
             if isinstance(data, P2PSettings):
                 settings = data

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -6,15 +6,17 @@ import numpy as np
 
 class MotionDetector:
     def __init__(self) -> None:
-        self.last_frame = None
+        self.last_frame: Optional[np.ndarray] = None
 
     """ Returns original frame and difference frame"""
 
-    def detect(self, frame: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def detect(
+        self, frame: np.ndarray
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         last_frame = self.last_frame
         self.last_frame = frame
         if last_frame is None:
-            return None, None
+            return None
 
         # Difference between frame1(image) and frame2(image)
         diff = cv2.absdiff(last_frame, frame)

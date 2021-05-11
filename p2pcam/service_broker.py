@@ -30,7 +30,6 @@ class ServiceBroker:
     @staticmethod
     async def _post(url, json, headers):
         async with ClientSession() as session:
-            session: ClientSession
             response = await session.post(
                 url, json=json, headers=headers, raise_for_status=True
             )
@@ -195,14 +194,14 @@ class ServiceBroker:
         }
 
     @staticmethod
-    def triplemd5(password: SecretStr):
+    def triplemd5(password: SecretStr) -> str:
         """Runs hashlib.md5() algorithm 3 times"""
         encoded = password.get_secret_value()
         for i in range(3):
             encoded = md5(encoded.encode("ascii")).hexdigest()  # nosec
         return encoded
 
-    def __init__(self, *, settings: P2PSettings = None) -> None:
+    def __init__(self, *, settings: P2PSettings) -> None:
         self._settings = settings
 
     async def async_prepare(
@@ -213,6 +212,8 @@ class ServiceBroker:
     ):
         settings = self._settings
         if reset_account or not settings.credential:
+            if not settings.login:
+                raise ValueError("login info is required")
             settings.credential = await ServiceBroker.async_login(
                 settings.login
             )

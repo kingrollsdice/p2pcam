@@ -221,7 +221,7 @@ class FrameInfoStruct(FormattedStructure):
 
 
 def av_recv_frame_data(
-    tutk_platform_lib: CDLL, av_chan_id: c_int
+    tutk_platform_av_lib: CDLL, av_chan_id: c_int
 ) -> typing.Tuple[
     int, Optional[bytes], Optional[FrameInfoStruct], Optional[int]
 ]:
@@ -242,7 +242,7 @@ def av_recv_frame_data(
     frame_info_max_len = sizeof(FrameInfoStruct)
     frame_index = c_uint()
 
-    errno = tutk_platform_lib.avRecvFrameData2(
+    errno = tutk_platform_av_lib.avRecvFrameData2(
         av_chan_id,
         pointer(frame_data),
         c_int(frame_data_max_len),
@@ -269,7 +269,7 @@ def av_recv_frame_data(
 
 
 def av_recv_io_ctrl(
-    tutk_platform_lib: CDLL, av_chan_id: c_int, timeout_ms: int
+    tutk_platform_av_lib: CDLL, av_chan_id: c_int, timeout_ms: int
 ) -> typing.Tuple[int, int, Optional[typing.List[bytes]]]:
     """Receive AV IO control.
 
@@ -283,7 +283,7 @@ def av_recv_io_ctrl(
     pn_io_ctrl_type = c_uint()
     ctl_data_len = 1024 * 1024
     ctl_data = (c_char * ctl_data_len)()
-    actual_len = tutk_platform_lib.avRecvIOCtrl(
+    actual_len = tutk_platform_av_lib.avRecvIOCtrl(
         av_chan_id,
         pointer(pn_io_ctrl_type),
         ctl_data,
@@ -298,7 +298,7 @@ def av_recv_io_ctrl(
     )
 
 
-def av_client_set_max_buf_size(tutk_platform_lib: CDLL, size: int) -> None:
+def av_client_set_max_buf_size(tutk_platform_av_lib: CDLL, size: int) -> None:
     """Set the maximum video frame buffer used in AV client.
 
     AV client sets the maximum video frame buffer by this function. The size of
@@ -308,10 +308,10 @@ def av_client_set_max_buf_size(tutk_platform_lib: CDLL, size: int) -> None:
     :param tutk_platform_lib: the c library loaded from the 'load_library' call.
     :param size: The maximum video frame buffer, in unit of kilo-byte
     """
-    tutk_platform_lib.avClientSetMaxBufSize(c_int(size))
+    tutk_platform_av_lib.avClientSetMaxBufSize(c_int(size))
 
 
-def av_client_stop(tutk_platform_lib: CDLL, av_chan_id: c_int) -> None:
+def av_client_stop(tutk_platform_av_lib: CDLL, av_chan_id: c_int) -> None:
     """Stop an AV client.
 
     An AV client stop AV channel by this function if this channel is no longer
@@ -320,11 +320,11 @@ def av_client_stop(tutk_platform_lib: CDLL, av_chan_id: c_int) -> None:
     :param tutk_platform_lib: the c library loaded from the 'load_library' call.
     :param av_chan_id: The channel ID of the AV channel to be stopped
     """
-    tutk_platform_lib.avClientStop(av_chan_id)
+    tutk_platform_av_lib.avClientStop(av_chan_id)
 
 
 def av_send_io_ctrl(
-    tutk_platform_lib: CDLL,
+    tutk_platform_av_lib: CDLL,
     av_chan_id: c_int,
     ctrl_type: int,
     data: Optional[bytes],
@@ -335,7 +335,7 @@ def av_send_io_ctrl(
     else:
         length = len(data)
         cdata = c_char_p(data)
-    errcode: c_int = tutk_platform_lib.avSendIOCtrl(
+    errcode: c_int = tutk_platform_av_lib.avSendIOCtrl(
         av_chan_id, c_uint(ctrl_type), cdata, length
     )
     return errcode
@@ -354,7 +354,7 @@ def iotc_session_close(tutk_platform_lib: CDLL, session_id: c_int) -> None:
 
 
 def av_client_start(
-    tutk_platform_lib: CDLL,
+    tutk_platform_av_lib: CDLL,
     session_id: Union[int, c_int],
     username: bytes,
     password: bytes,
@@ -382,7 +382,7 @@ def av_client_start(
     n_timeout = c_uint(timeout_secs)
     user_defined_service_type = c_uint()
     chan_id = c_uint8(channel_id)
-    av_chan_id = tutk_platform_lib.avClientStart(
+    av_chan_id = tutk_platform_av_lib.avClientStart(
         session_id,
         c_char_p(username),
         c_char_p(password),
@@ -394,7 +394,7 @@ def av_client_start(
 
 
 def av_initialize(
-    tutk_platform_lib: CDLL, max_num_channels: Optional[int] = 1
+    tutk_platform_av_lib: CDLL, max_num_channels: Optional[int] = 1
 ) -> int:
     """Initialize AV module.
 
@@ -407,7 +407,7 @@ def av_initialize(
 
     :return:The actual maximum number of AV channels to be set. Error code if return value < 0.
     """
-    max_chans: int = tutk_platform_lib.avInitialize(max_num_channels)
+    max_chans: int = tutk_platform_av_lib.avInitialize(max_num_channels)
     return max_chans
 
 
@@ -424,7 +424,7 @@ def av_deinitialize(tutk_platform_lib: CDLL) -> int:
 
 
 def iotc_session_check(
-    tutk_platform_lib: CDLL, session_id: c_int
+    tutk_platform_IOTC_lib: CDLL, session_id: c_int
 ) -> typing.Tuple[int, SInfoStruct]:
     """Used by a device or a client to check the IOTC session info.
 
@@ -436,7 +436,7 @@ def iotc_session_check(
     :return: The session info of specified IOTC session
     """
     sess_info = SInfoStruct()
-    err_code = tutk_platform_lib.IOTC_Session_Check(
+    err_code = tutk_platform_IOTC_lib.IOTC_Session_Check(
         session_id, pointer(sess_info)
     )
     return err_code, sess_info
@@ -460,27 +460,27 @@ def iotc_connect_by_uid(tutk_platform_lib: CDLL, p2p_id: str) -> c_int:
     return session_id
 
 
-def iotc_set_log_path(tutk_platform_lib: CDLL, path: str) -> None:
+def iotc_set_log_path(tutk_platform_IOTC_lib: CDLL, path: str) -> None:
     """Set path of log file.
 
     Set the absolute path of log file
     """
-    tutk_platform_lib.IOTC_Set_Log_Path(
+    tutk_platform_IOTC_lib.IOTC_Set_Log_Path(
         c_char_p(path.encode("ascii")), c_int(0)
     )
 
 
-def iotc_get_version(tutk_platform_lib: CDLL) -> int:
+def iotc_get_version(tutk_platform_IOTC_lib: CDLL) -> int:
     """Get the version of IOTC module.
 
     This function returns the version of IOTC module.
     """
     version = c_uint32()
-    tutk_platform_lib.IOTC_Get_Version(pointer(version))
+    tutk_platform_IOTC_lib.IOTC_Get_Version(pointer(version))
     return version.value
 
 
-def iotc_initialize(tutk_platform_lib: CDLL, udp_port: int = 0) -> int:
+def iotc_initialize(tutk_platform_IOTC_lib: CDLL, udp_port: int = 0) -> int:
     """Initialize IOTC module.
 
     This function is used by devices or clients to initialize IOTC module and
@@ -497,11 +497,11 @@ def iotc_initialize(tutk_platform_lib: CDLL, udp_port: int = 0) -> int:
     :param udp_port: Specify a UDP port. Random UDP port is used if it is specified as 0.
     :return: 0 if successful, Error code if return value < 0
     """
-    errno: int = tutk_platform_lib.IOTC_Initialize2(udp_port)
+    errno: int = tutk_platform_IOTC_lib.IOTC_Initialize2(udp_port)
     return errno
 
 
-def iotc_deinitialize(tutk_platform_lib: CDLL) -> c_int:
+def iotc_deinitialize(tutk_platform_IOTC_lib: CDLL) -> c_int:
     """Deinitialize IOTC module.
 
     This function will deinitialize IOTC module.
@@ -509,7 +509,7 @@ def iotc_deinitialize(tutk_platform_lib: CDLL) -> c_int:
     :param tutk_platform_lib: The underlying c library (from tutk.load_library())
     :return: Error code if return value < 0
     """
-    errno: c_int = tutk_platform_lib.IOTC_DeInitialize()
+    errno: c_int = tutk_platform_IOTC_lib.IOTC_DeInitialize()
     return errno
 
 

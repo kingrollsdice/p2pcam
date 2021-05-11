@@ -10,9 +10,9 @@ try:
 except ImportError:
     cv2 = None
 
-from wyzecam.tutk import tutk
-from wyzecam.tutk.tutk_ioctl_mux import TutkIOCtrlMux
-from wyzecam.tutk.tutk_protocol import (
+from p2pcam.tutk import tutk
+from p2pcam.tutk.tutk_ioctl_mux import TutkIOCtrlMux
+from p2pcam.tutk.tutk_protocol import (
     K10000ConnectRequest,
     K10020CheckCameraInfo,
     K10056SetResolvingBit,

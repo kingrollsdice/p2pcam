@@ -4,8 +4,8 @@ try:
     import cv2
 except ImportError:
     cv2 = None
-from wyzecam import get_camera_list, get_user_info, login
-from wyzecam.iotc import P2PPlatform
+from p2pcam.api import get_camera_list, get_user_info, login
+from p2pcam.iotc import P2PPlatform
 
 
 def main():

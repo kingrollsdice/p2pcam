@@ -1,6 +1,6 @@
 import pytest
-import wyzecam.iotc
-from wyzecam.mock.mock_tutk_library import MockTutkLibrary  # type: ignore
+from p2pcam.iotc import P2PPlatform
+from p2pcam.mock.mock_tutk_library import MockTutkLibrary  # type: ignore
 
 
 @pytest.fixture
@@ -10,9 +10,10 @@ def tutk_platform_lib():
 
 @pytest.fixture
 def iotc(tutk_platform_lib):
-    return wyzecam.iotc.P2PPlatform(tutk_platform_lib)
+    return P2PPlatform(tutk_platform_lib)
 
 
-def test_get_version(iotc: wyzecam.iotc.P2PPlatform) -> None:
-    with iotc:
-        assert iotc.version == 0xDEADBEEF
+def test_get_version() -> None:
+    platform = P2PPlatform.load_Platform()
+    assert platform.version == 17630976
+    P2PPlatform.unload_Platform()
